@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quarkus Sonify demo</title>
+  <!-- an empty icon, so that the browser does not request /favicon.ico and play a 404 on every load -->
+  <link rel="icon" href="data:,">
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 70rem; padding: 0 1rem; line-height: 1.5; }
+    h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+    h2 { font-size: 1.1rem; margin: 1.5rem 0 0.25rem; }
+    p { margin-top: 0; }
+    .scroll { overflow-x: auto; }
+    table { border-collapse: collapse; margin: 1rem 0; }
+    th, td { padding: 0.3rem 0.6rem; text-align: center; white-space: nowrap; }
+    th { font-weight: 600; }
+    tbody th { text-align: left; }
+    thead th.group { border-bottom: 2px solid currentColor; }
+    td a { text-decoration: none; padding: 0.15rem 0.4rem; border-radius: 0.3rem; font-variant-numeric: tabular-nums; }
+    td a:hover, td a:focus { background: color-mix(in srgb, currentColor 18%, transparent); }
+    #last { font-family: ui-monospace, monospace; min-height: 1.5em; }
+  </style>
+</head>
+<body>
+  <h1>Quarkus Sonify demo</h1>
+  <p>Every link sends one request to this application. The application plays one sound for the request (by HTTP
+    method) and, a moment later, one for the response (by status code). The sound comes from the machine that runs the
+    application, not from this page.</p>
+  <p id="last">Click a link.</p>
+
+  <div class="scroll">
+    <table>
+      <thead id="head"></thead>
+      <tbody id="body"></tbody>
+    </table>
+  </div>
+
+  <p><a href="#" id="boom">GET /boom</a>: an endpoint that throws an exception (500).</p>
+
+  <h2>Configured in application.properties</h2>
+  <ul>
+    <li><strong>418</strong> plays a sound file (<code>sounds/whistle.wav</code>) instead of the built-in 4xx note.</li>
+    <li><strong>OPTIONS</strong> requests are <code>off</code>: only their response is heard.</li>
+  </ul>
+
+  <h2>Custom sounds</h2>
+  <p>These play a third sound, between the request and the response.</p>
+  <ul>
+    <li><a href="#" class="custom" data-method="POST" data-path="/orders">POST /orders</a>: calls a bean method annotated
+      with <code>@PlaySound("order-placed")</code>, which is configured to play <code>sounds/coin.wav</code>.</li>
+    <li><a href="#" class="custom" data-method="GET" data-path="/audit">GET /audit</a>: calls
+      <code>SoundPlayer.play("audit")</code>. The name is not configured, so it gets a sound derived from the name.</li>
+    <li><a href="#" class="custom" data-method="POST" data-path="/orders/ship">POST /orders/ship</a>: calls
+      <code>SoundPlayer.play("shipped")</code>, a sound of three tones that <code>DemoSounds</code> defines in code.</li>
+  </ul>
+
+  <h2>Defined in code (DemoSounds, a SonifyCustomizer bean)</h2>
+  <ul>
+    <li><strong>409</strong> is two flat knocks made of synthesized tones.</li>
+    <li><strong>410</strong> is computed audio: a short downward sweep.</li>
+    <li>The customizer also turns <code>order-placed</code> off, but the property in
+      <code>application.properties</code> wins, so the coin still plays.</li>
+  </ul>
+
+  <script>
+    const methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+    const groups = {
+      '2xx': [200, 201, 202, 204],
+      '3xx': [301, 302, 304],
+      '4xx': [400, 401, 403, 404, 405, 409, 410, 412, 418, 422, 429],
+      '5xx': [500, 502, 503, 504]
+    };
+    const last = document.getElementById('last');
+
+    async function send(method, path) {
+      last.textContent = method + ' ' + path + ' ...';
+      try {
+        // the demo's 3xx responses have no Location header, so there is nothing for fetch to follow
+        const response = await fetch(path, { method: method });
+        last.textContent = method + ' ' + path + ' -> ' + response.status;
+      } catch (e) {
+        last.textContent = method + ' ' + path + ' failed: ' + e.message;
+      }
+    }
+
+    function link(text, method, path) {
+      const a = document.createElement('a');
+      a.href = path;
+      a.textContent = text;
+      a.title = method + ' ' + path;
+      a.addEventListener('click', event => {
+        event.preventDefault();
+        send(method, path);
+      });
+      return a;
+    }
+
+    const groupRow = document.createElement('tr');
+    const codeRow = document.createElement('tr');
+    groupRow.appendChild(document.createElement('th'));
+    codeRow.appendChild(document.createElement('th'));
+    for (const [name, codes] of Object.entries(groups)) {
+      const th = document.createElement('th');
+      th.colSpan = codes.length;
+      th.className = 'group';
+      th.textContent = name;
+      groupRow.appendChild(th);
+      for (const code of codes) {
+        const codeTh = document.createElement('th');
+        codeTh.textContent = code;
+        codeRow.appendChild(codeTh);
+      }
+    }
+    document.getElementById('head').append(groupRow, codeRow);
+
+    for (const method of methods) {
+      const row = document.createElement('tr');
+      const th = document.createElement('th');
+      th.textContent = method;
+      row.appendChild(th);
+      for (const codes of Object.values(groups)) {
+        for (const code of codes) {
+          const td = document.createElement('td');
+          td.appendChild(link(code, method, '/status/' + code));
+          row.appendChild(td);
+        }
+      }
+      document.getElementById('body').appendChild(row);
+    }
+
+    for (const a of document.querySelectorAll('a.custom')) {
+      a.addEventListener('click', event => {
+        event.preventDefault();
+        send(a.dataset.method, a.dataset.path);
+      });
+    }
+
+    document.getElementById('boom').addEventListener('click', event => {
+      event.preventDefault();
+      send('GET', '/boom');
+    });
+  </script>
+</body>
+</html>

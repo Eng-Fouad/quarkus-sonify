@@ -1,0 +1,10 @@
+name: Sonify
+description: Hear what your application is doing in dev mode
+metadata:
+  keywords:
+    - sonify
+    - sound
+    - dev-mode
+  categories:
+    - "miscellaneous"
+  status: "experimental"
